@@ -6,7 +6,6 @@
     <title>證券交易資料分析系統</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <style>
-        /* 全域字體顏色設定：使用不深不淺的中灰色，確保與純黑有區別且好閱讀 */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             color: #555555; 
@@ -26,19 +25,42 @@
         }
 
         h2, h3 {
-            color: #444444; /* 標題稍微深一點點，增加層次 */
+            color: #444444; 
             border-bottom: 2px solid #eeeeee;
             padding-bottom: 10px;
         }
 
         .file-group {
-            margin-bottom: 20px;
+            margin-bottom: 25px;
         }
 
         .file-group label {
             display: block;
             margin-bottom: 8px;
             font-weight: bold;
+        }
+
+        /* 將上傳按鈕與燈號放在同一行並置中對齊 */
+        .input-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* 燈號的基礎樣式 (預設為熄滅的灰色) */
+        .status-light {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background-color: #dddddd; 
+            transition: all 0.3s ease;
+        }
+
+        /* 燈號點亮時的樣式 (綠色 + 發光效果) */
+        .status-light.active {
+            background-color: #5cb85c;
+            box-shadow: 0 0 8px rgba(92, 184, 92, 0.6);
         }
 
         button {
@@ -58,7 +80,6 @@
             background-color: #e0e0e0;
         }
 
-        /* 分析按鈕給予特別的視覺提示 */
         #analyzeBtn {
             background-color: #e8ecef;
             border-color: #b8c2cc;
@@ -69,10 +90,9 @@
         #statusMsg {
             margin-top: 15px;
             font-size: 14px;
-            color: #d9534f; /* 錯誤提示用稍微偏紅的顏色 */
+            color: #d9534f;
         }
 
-        /* 用來隱藏元素的 CSS class */
         .hidden {
             display: none;
         }
@@ -83,14 +103,21 @@
     <div class="container">
         <div id="uploadSection">
             <h2>資料上傳</h2>
+            
             <div class="file-group">
                 <label for="fileA">上傳每天交易資料 (a)：</label>
-                <input type="file" id="fileA" accept=".csv, .xls, .xlsx">
+                <div class="input-wrapper">
+                    <input type="file" id="fileA" accept=".csv, .xls, .xlsx">
+                    <span class="status-light" id="lightA" title="尚未上傳"></span>
+                </div>
             </div>
             
             <div class="file-group">
                 <label for="fileB">上傳一周交易資料 (b)：</label>
-                <input type="file" id="fileB" accept=".csv, .xls, .xlsx">
+                <div class="input-wrapper">
+                    <input type="file" id="fileB" accept=".csv, .xls, .xlsx">
+                    <span class="status-light" id="lightB" title="尚未上傳"></span>
+                </div>
             </div>
 
             <button id="analyzeBtn">開始分析</button>
@@ -106,50 +133,66 @@
     </div>
 
     <script>
-    // 取得頁面元素
+        // --- 新增：監聽檔案上傳狀態並切換燈號 ---
+        
+        // 處理檔案 A (每天交易資料) 的燈號
+        document.getElementById('fileA').addEventListener('change', function() {
+            const light = document.getElementById('lightA');
+            if (this.files.length > 0) {
+                light.classList.add('active'); // 點亮綠燈
+                light.title = "已選擇檔案";
+            } else {
+                light.classList.remove('active'); // 恢復灰燈 (例如使用者按了取消)
+                light.title = "尚未上傳";
+            }
+        });
+
+        // 處理檔案 B (一週交易資料) 的燈號
+        document.getElementById('fileB').addEventListener('change', function() {
+            const light = document.getElementById('lightB');
+            if (this.files.length > 0) {
+                light.classList.add('active');
+                light.title = "已選擇檔案";
+            } else {
+                light.classList.remove('active');
+                light.title = "尚未上傳";
+            }
+        });
+
+        // --- 以下為原本的檔案解析與跳轉邏輯 ---
+
         const analyzeBtn = document.getElementById('analyzeBtn');
         const uploadSection = document.getElementById('uploadSection');
         const resultSection = document.getElementById('resultSection');
         const statusMsg = document.getElementById('statusMsg');
 
-// 建立一個讀取檔案的 Promise 函式 (將 Excel/CSV 轉為 JSON 陣列)
         function readExcelFile(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
-                
                 reader.onload = function(e) {
                     try {
                         const data = new Uint8Array(e.target.result);
-                        // 使用 SheetJS 讀取資料
                         const workbook = XLSX.read(data, { type: 'array' });
-                        // 抓取第一個工作表 (Sheet)
                         const firstSheetName = workbook.SheetNames[0];
                         const worksheet = workbook.Sheets[firstSheetName];
-                        // 將工作表轉換為 JSON 格式
                         const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
                         resolve(jsonData);
                     } catch (error) {
                         reject(error);
                     }
                 };
-
-                reader.onerror = function(error) {
-                    reject(error);
-                };
-
-                // 以 ArrayBuffer 格式讀取檔案
+                reader.onerror = function(error) { reject(error); };
                 reader.readAsArrayBuffer(file);
             });
         }
 
-// 設定「開始分析」按鈕的點擊事件
         analyzeBtn.addEventListener('click', async function() {
             const fileA = document.getElementById('fileA').files[0];
             const fileB = document.getElementById('fileB').files[0];
 
             if (!fileA || !fileB) {
                 statusMsg.style.color = '#d9534f';
-                statusMsg.textContent = '提示：請確認已上傳 (a) 與 (b) 兩份檔案。';
+                statusMsg.textContent = '提示：請確認 (a) 與 (b) 兩份檔案皆已亮起綠燈。';
                 return;
             }
 
@@ -158,23 +201,17 @@
             analyzeBtn.disabled = true;
 
             try {
-                // 同時讀取兩個檔案並等待結果 (使用 async/await 與 Promise.all)
                 const [dataA, dataB] = await Promise.all([
                     readExcelFile(fileA),
                     readExcelFile(fileB)
                 ]);
 
-                // 將解析後的 JSON 資料存入瀏覽器的 sessionStorage
                 sessionStorage.setItem('dailyData', JSON.stringify(dataA));
                 sessionStorage.setItem('weeklyData', JSON.stringify(dataB));
 
-                // 成功後，隱藏上傳區，顯示結果按鈕區
                 uploadSection.classList.add('hidden');
                 resultSection.classList.remove('hidden');
                 statusMsg.textContent = '解析成功！請選擇分析條件。';
-
-                // 你可以在瀏覽器開發者工具 (F12) 的 Console 看到資料長怎樣
-                console.log("每日資料範例:", dataA[0]); 
 
             } catch (error) {
                 console.error(error);
@@ -184,12 +221,10 @@
             }
         });
 
-// 設定開啟新分頁的函式
         function openResultPage(conditionTitle) {
             const targetUrl = `filterResult.html?title=${encodeURIComponent(conditionTitle)}`;
             window.open(targetUrl, '_blank');
         }
     </script>
-
 </body>
 </html>
