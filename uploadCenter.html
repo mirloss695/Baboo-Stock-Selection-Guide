@@ -40,11 +40,12 @@
             font-weight: bold;
         }
 
-        /* 調整 1：將上傳按鈕與燈號的距離拉近 (改為 6px) */
+        /* 調整：增加左側外距讓整體往右移，並設定燈號與按鈕的間距 */
         .input-wrapper {
             display: flex;
             align-items: center;
-            gap: 6px; 
+            gap: 10px; 
+            margin-left: 10px;
         }
 
         /* 燈號的基礎樣式 */
@@ -55,9 +56,11 @@
             border-radius: 50%;
             background-color: #e0e0e0; 
             transition: all 0.3s ease;
+            /* 避免燈號被壓縮變形 */
+            flex-shrink: 0; 
         }
 
-        /* 調整 2：燈號點亮時的樣式改為更亮的螢光綠，並加強發光光暈 */
+        /* 燈號點亮時的樣式 (亮螢光綠 + 發光光暈) */
         .status-light.active {
             background-color: #00e600;
             box-shadow: 0 0 10px rgba(0, 230, 0, 0.7);
@@ -107,16 +110,16 @@
             <div class="file-group">
                 <label for="fileA">上傳每天交易資料 (a)：</label>
                 <div class="input-wrapper">
-                    <input type="file" id="fileA" accept=".csv, .xls, .xlsx">
                     <span class="status-light" id="lightA" title="尚未上傳"></span>
+                    <input type="file" id="fileA" accept=".csv, .xls, .xlsx">
                 </div>
             </div>
             
             <div class="file-group">
                 <label for="fileB">上傳一周交易資料 (b)：</label>
                 <div class="input-wrapper">
-                    <input type="file" id="fileB" accept=".csv, .xls, .xlsx">
                     <span class="status-light" id="lightB" title="尚未上傳"></span>
+                    <input type="file" id="fileB" accept=".csv, .xls, .xlsx">
                 </div>
             </div>
 
