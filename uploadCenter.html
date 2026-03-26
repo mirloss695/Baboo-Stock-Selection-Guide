@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>證券交易資料分析系統</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <style>
+        /* 全域字體顏色設定：使用不深不淺的中灰色，確保與純黑有區別且好閱讀 */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #555555; 
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            padding-top: 50px;
+        }
+
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 500px;
+        }
+
+        h2, h3 {
+            color: #444444; /* 標題稍微深一點點，增加層次 */
+            border-bottom: 2px solid #eeeeee;
+            padding-bottom: 10px;
+        }
+
+        .file-group {
+            margin-bottom: 20px;
+        }
+
+        .file-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        button {
+            background-color: #f0f0f0;
+            color: #555555;
+            border: 1px solid #cccccc;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #e0e0e0;
+        }
+
+        /* 分析按鈕給予特別的視覺提示 */
+        #analyzeBtn {
+            background-color: #e8ecef;
+            border-color: #b8c2cc;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        #statusMsg {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #d9534f; /* 錯誤提示用稍微偏紅的顏色 */
+        }
+
+        /* 用來隱藏元素的 CSS class */
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div id="uploadSection">
+            <h2>資料上傳</h2>
+            <div class="file-group">
+                <label for="fileA">上傳每天交易資料 (a)：</label>
+                <input type="file" id="fileA" accept=".csv, .xls, .xlsx">
+            </div>
+            
+            <div class="file-group">
+                <label for="fileB">上傳一周交易資料 (b)：</label>
+                <input type="file" id="fileB" accept=".csv, .xls, .xlsx">
+            </div>
+
+            <button id="analyzeBtn">開始分析</button>
+            <div id="statusMsg"></div>
+        </div>
+
+        <div id="resultSection" class="hidden">
+            <h3>分析完成</h3>
+            <p>請選擇要查看的結果：</p>
+            <button onclick="openResultPage('連續上漲至少兩天')">【連續上漲至少兩天】</button>
+            <button onclick="openResultPage('連續下跌至少兩天')">【連續下跌至少兩天】</button>
+        </div>
+    </div>
+
+    <script>
+    // 取得頁面元素
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const uploadSection = document.getElementById('uploadSection');
+        const resultSection = document.getElementById('resultSection');
+        const statusMsg = document.getElementById('statusMsg');
+
+// 建立一個讀取檔案的 Promise 函式 (將 Excel/CSV 轉為 JSON 陣列)
+        function readExcelFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        // 使用 SheetJS 讀取資料
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        // 抓取第一個工作表 (Sheet)
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        // 將工作表轉換為 JSON 格式
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+                        resolve(jsonData);
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+
+                reader.onerror = function(error) {
+                    reject(error);
+                };
+
+                // 以 ArrayBuffer 格式讀取檔案
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+// 設定「開始分析」按鈕的點擊事件
+        analyzeBtn.addEventListener('click', async function() {
+            const fileA = document.getElementById('fileA').files[0];
+            const fileB = document.getElementById('fileB').files[0];
+
+            if (!fileA || !fileB) {
+                statusMsg.style.color = '#d9534f';
+                statusMsg.textContent = '提示：請確認已上傳 (a) 與 (b) 兩份檔案。';
+                return;
+            }
+
+            statusMsg.style.color = '#555555';
+            statusMsg.textContent = '資料解析中，請稍候...';
+            analyzeBtn.disabled = true;
+
+            try {
+                // 同時讀取兩個檔案並等待結果 (使用 async/await 與 Promise.all)
+                const [dataA, dataB] = await Promise.all([
+                    readExcelFile(fileA),
+                    readExcelFile(fileB)
+                ]);
+
+                // 將解析後的 JSON 資料存入瀏覽器的 sessionStorage
+                sessionStorage.setItem('dailyData', JSON.stringify(dataA));
+                sessionStorage.setItem('weeklyData', JSON.stringify(dataB));
+
+                // 成功後，隱藏上傳區，顯示結果按鈕區
+                uploadSection.classList.add('hidden');
+                resultSection.classList.remove('hidden');
+                statusMsg.textContent = '解析成功！請選擇分析條件。';
+
+                // 你可以在瀏覽器開發者工具 (F12) 的 Console 看到資料長怎樣
+                console.log("每日資料範例:", dataA[0]); 
+
+            } catch (error) {
+                console.error(error);
+                statusMsg.style.color = '#d9534f';
+                statusMsg.textContent = '檔案解析失敗，請確認檔案格式是否正確。';
+                analyzeBtn.disabled = false;
+            }
+        });
+
+// 設定開啟新分頁的函式
+        function openResultPage(conditionTitle) {
+            const targetUrl = `filterResult.html?title=${encodeURIComponent(conditionTitle)}`;
+            window.open(targetUrl, '_blank');
+        }
+    </script>
+
+</body>
+</html>

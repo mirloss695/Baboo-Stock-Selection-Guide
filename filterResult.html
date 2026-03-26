@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>篩選結果</title>
+    <style>
+        /* 樣式與之前相同，保持灰色系的舒適閱讀體驗 */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #555555; 
+            background-color: #f4f4f9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+            margin: 0;
+        }
+
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 800px;
+        }
+
+        #pageTitle {
+            color: #444444;
+            border-bottom: 2px solid #eeeeee;
+            padding-bottom: 15px;
+            margin-top: 0;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .stock-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+        }
+
+        .stock-btn {
+            background-color: #ffffff;
+            color: #555555;
+            border: 1px solid #cccccc;
+            padding: 12px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            text-align: center;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .stock-btn:hover {
+            background-color: #e8ecef;
+            border-color: #b8c2cc;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #999999;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2 id="pageTitle">載入中...</h2>
+        <div id="stockList" class="stock-grid"></div>
+    </div>
+
+    <script>
+        // 1. 解析網址參數，設定頁面標題
+        const urlParams = new URLSearchParams(window.location.search);
+        const conditionTitle = urlParams.get('title') || '未指定的篩選條件';
+        document.title = conditionTitle;
+        document.getElementById('pageTitle').textContent = conditionTitle;
+
+        // 2. 從 sessionStorage 讀取從 uploadCenter 傳來的真實解析資料
+        const dailyDataStr = sessionStorage.getItem('dailyData');
+        let filteredStocks = []; // 用來存放符合條件的股票
+
+        if (dailyDataStr) {
+            const dailyData = JSON.parse(dailyDataStr);
+            
+            // 將扁平的 Excel 資料，依照「證券代號 + 名稱」進行群組化
+            const stockGroups = {};
+            
+            dailyData.forEach(row => {
+                // 這裡的屬性名稱需要與你 CSV 的表頭完全一致
+                // 為了防呆，加入了幾種常見的表頭命名備案
+                const code = row['證券代號'] || row['代號'] || row['Code'];
+                const name = row['證券名稱'] || row['名稱'] || row['Name'];
+                const open = parseFloat(row['開盤價'] || row['Open']);
+                const close = parseFloat(row['收盤價'] || row['Close']);
+
+                if (!code || !name) return; // 跳過沒有股號股名的空白行
+
+                const key = `${code} ${name}`;
+                if (!stockGroups[key]) {
+                    stockGroups[key] = [];
+                }
+                // 將每日的開盤與收盤價存入該股票的陣列中
+                stockGroups[key].push({ open, close });
+            });
+
+            // 3. 執行條件篩選 (判斷是否連續兩天上漲/下跌)
+            for (const [stockFullName, records] of Object.entries(stockGroups)) {
+                let isMatch = false;
+
+                // 確保該檔股票至少有兩天的資料才能比對
+                if (records.length >= 2) {
+                    for (let i = 1; i < records.length; i++) {
+                        const today = records[i];
+                        const yesterday = records[i - 1];
+
+                        if (conditionTitle === '連續上漲至少兩天') {
+                            // 昨天收>開 且 今天收>開
+                            if ((yesterday.close > yesterday.open) && (today.close > today.open)) {
+                                isMatch = true;
+                                break; // 只要找到一次符合就過關，換下一檔股票
+                            }
+                        } else if (conditionTitle === '連續下跌至少兩天') {
+                            // 昨天收<開 且 今天收<開
+                            if ((yesterday.close < yesterday.open) && (today.close < today.open)) {
+                                isMatch = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // 如果符合條件，將股號與股名拆開存入結果陣列
+                if (isMatch) {
+                    const parts = stockFullName.split(' ');
+                    filteredStocks.push({ code: parts[0], name: parts.slice(1).join(' ') });
+                }
+            }
+        }
+
+        // 4. 動態生成按鈕的函式
+        function renderStockButtons(stocks) {
+            const container = document.getElementById('stockList');
+            container.innerHTML = ''; 
+
+            if (stocks.length === 0) {
+                container.innerHTML = '<div class="no-data">目前沒有符合條件的證券資料，請確認檔案格式或表頭名稱。</div>';
+                container.classList.remove('stock-grid'); 
+                return;
+            }
+
+            stocks.forEach(stock => {
+                const btn = document.createElement('button');
+                btn.className = 'stock-btn';
+                const stockFullName = `${stock.code} ${stock.name}`;
+                btn.textContent = stockFullName;
+
+                btn.addEventListener('click', () => {
+                    const targetUrl = `stockDetail.html?stock=${encodeURIComponent(stockFullName)}`;
+                    window.open(targetUrl, '_blank');
+                });
+
+                container.appendChild(btn);
+            });
+        }
+
+        // 5. 執行畫面渲染
+        renderStockButtons(filteredStocks);
+    </script>
+
+</body>
+</html>
