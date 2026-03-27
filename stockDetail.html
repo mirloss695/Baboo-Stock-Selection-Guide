@@ -264,8 +264,8 @@
                         }
                     }
 
-                    // 指標 5：漲/跌 (說明書定義：K = 開盤 - 收盤)
-                    const k = current.open - current.close;
+                    // 指標 5：漲/跌 (說明書定義：K = 收盤 - 開盤)
+                    const k = current.close - current.open;
                     let upDownHtml = '';
                     if (k > 0) {
                         upDownHtml = '<span class="dot dot-red"></span>';
