@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>篩選結果</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <style>
-        /* 樣式與之前相同，保持灰色系的舒適閱讀體驗 */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             color: #555555; 
@@ -31,9 +31,28 @@
             border-bottom: 2px solid #eeeeee;
             padding-bottom: 15px;
             margin-top: 0;
-            margin-bottom: 25px;
+            margin-bottom: 20px;
             text-align: center;
         }
+
+        .action-bar {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 25px;
+        }
+
+        .download-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        .download-btn:hover { background-color: #45a049; }
 
         .stock-grid {
             display: grid;
@@ -54,7 +73,6 @@
             transition: all 0.2s ease;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
-
         .stock-btn:hover {
             background-color: #e8ecef;
             border-color: #b8c2cc;
@@ -62,83 +80,108 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
 
-        .no-data {
-            text-align: center;
-            padding: 20px;
-            font-style: italic;
-            color: #999999;
-        }
+        .no-data { text-align: center; padding: 20px; font-style: italic; color: #999999; }
     </style>
 </head>
 <body>
 
     <div class="container">
         <h2 id="pageTitle">載入中...</h2>
+        
+        <div class="action-bar" id="actionBar" style="display: none;">
+            <button class="download-btn" onclick="downloadExcel()">下載試算表 (.xls)</button>
+        </div>
+
         <div id="stockList" class="stock-grid"></div>
     </div>
 
     <script>
-        // 1. 解析網址參數，設定頁面標題
         const urlParams = new URLSearchParams(window.location.search);
-        const conditionTitle = urlParams.get('title') || '未指定的篩選條件';
-        document.title = conditionTitle;
-        document.getElementById('pageTitle').textContent = conditionTitle;
+        let conditionTitle = urlParams.get('title') || '未指定的篩選條件';
+        // 去除外圍的括號以便命名與顯示
+        const cleanTitle = conditionTitle.replace(/【|】/g, ''); 
+        
+        document.title = cleanTitle;
+        document.getElementById('pageTitle').textContent = cleanTitle;
 
-        // 2. 從 sessionStorage 讀取從 uploadCenter 傳來的真實解析資料
         const dailyDataStr = sessionStorage.getItem('dailyData');
-        let filteredStocks = []; // 用來存放符合條件的股票
+        let filteredStocks = []; 
+
+        function parseNum(val) {
+            if (typeof val === 'number') return val;
+            if (!val) return 0;
+            return parseFloat(String(val).replace(/,/g, ''));
+        }
 
         if (dailyDataStr) {
             const dailyData = JSON.parse(dailyDataStr);
-            
-            // 將扁平的 Excel 資料，依照「證券代號 + 名稱」進行群組化
             const stockGroups = {};
             
             dailyData.forEach(row => {
-                // 這裡的屬性名稱需要與你 CSV 的表頭完全一致
-                // 為了防呆，加入了幾種常見的表頭命名備案
                 const code = row['證券代號'] || row['代號'] || row['Code'];
                 const name = row['證券名稱'] || row['名稱'] || row['Name'];
-                const open = parseFloat(row['開盤價'] || row['Open']);
-                const close = parseFloat(row['收盤價'] || row['Close']);
+                const open = parseNum(row['開盤價'] || row['Open']);
+                const close = parseNum(row['收盤價'] || row['Close']);
+                const high = parseNum(row['最高價'] || row['High']);
+                const low = parseNum(row['最低價'] || row['Low']);
+                const volume = parseNum(row['成交股數'] || row['成交量'] || row['Volume']);
 
-                if (!code || !name) return; // 跳過沒有股號股名的空白行
+                if (!code || !name) return;
 
                 const key = `${code} ${name}`;
-                if (!stockGroups[key]) {
-                    stockGroups[key] = [];
-                }
-                // 將每日的開盤與收盤價存入該股票的陣列中
-                stockGroups[key].push({ open, close });
+                if (!stockGroups[key]) stockGroups[key] = [];
+                stockGroups[key].push({ open, close, high, low, volume });
             });
 
-            // 3. 執行條件篩選 (判斷是否連續兩天上漲/下跌)
             for (const [stockFullName, records] of Object.entries(stockGroups)) {
                 let isMatch = false;
 
-                // 確保該檔股票至少有兩天的資料才能比對
                 if (records.length >= 2) {
                     for (let i = 1; i < records.length; i++) {
-                        const today = records[i];
-                        const yesterday = records[i - 1];
+                        const t = records[i];     // Today (N+1)
+                        const y = records[i - 1]; // Yesterday (N)
 
-                        if (conditionTitle === '連續上漲至少兩天') {
-                            // 昨天收>開 且 今天收>開
-                            if ((yesterday.close > yesterday.open) && (today.close > today.open)) {
-                                isMatch = true;
-                                break; // 只要找到一次符合就過關，換下一檔股票
-                            }
-                        } else if (conditionTitle === '連續下跌至少兩天') {
-                            // 昨天收<開 且 今天收<開
-                            if ((yesterday.close < yesterday.open) && (today.close < today.open)) {
-                                isMatch = true;
-                                break;
-                            }
+                        // --- 運算條件 ---
+                        // 條件一：上漲的紅 K
+                        const cond1 = (y.close - y.open > 0) && (t.close - t.open > 0) && (t.close - y.close > 0);
+                        // 條件二：下跌的黑 K
+                        const cond2 = (y.close - y.open < 0) && (t.close - t.open < 0) && (t.close - y.close < 0);
+                        // 條件三：上漲的黑 K
+                        const cond3 = (t.close - t.open < 0) && (t.close - y.close > 0);
+                        // 條件四：下跌的紅 K
+                        const cond4 = (t.close - t.open > 0) && (t.close - y.close < 0);
+
+                        // 共振判斷
+                        const p1 = Math.abs(t.close - t.open);
+                        const p2 = (t.high - t.low) / 2;
+                        const p = p1 - p2;
+                        const h = t.volume - y.volume;
+                        
+                        let isResonance = false;
+                        if ((p > 0 && h > 0) || (p < 0 && h < 0)) {
+                            isResonance = true;
+                        }
+
+                        // 判斷是否符合特定名單
+                        let passed = false;
+                        const vCheck = t.volume > 1000;
+
+                        if (cleanTitle === '候選名單一' && cond1 && isResonance && vCheck) passed = true;
+                        if (cleanTitle === '候選名單二' && cond1 && !isResonance && vCheck) passed = true;
+                        if (cleanTitle === '候選名單三' && cond3 && isResonance && vCheck) passed = true;
+                        if (cleanTitle === '候選名單四' && cond3 && !isResonance && vCheck) passed = true;
+                        if (cleanTitle === '候選名單五' && cond4 && isResonance && vCheck) passed = true;
+                        if (cleanTitle === '候選名單六' && cond4 && !isResonance && vCheck) passed = true;
+                        if (cleanTitle === '候選名單七' && cond2 && isResonance && vCheck) passed = true;
+                        if (cleanTitle === '候選名單八' && cond2 && !isResonance && vCheck) passed = true;
+
+                        if (passed) {
+                            isMatch = true;
+                            break; 
                         }
                     }
                 }
 
-                // 如果符合條件，將股號與股名拆開存入結果陣列
                 if (isMatch) {
                     const parts = stockFullName.split(' ');
                     filteredStocks.push({ code: parts[0], name: parts.slice(1).join(' ') });
@@ -146,16 +189,17 @@
             }
         }
 
-        // 4. 動態生成按鈕的函式
         function renderStockButtons(stocks) {
             const container = document.getElementById('stockList');
             container.innerHTML = ''; 
 
             if (stocks.length === 0) {
-                container.innerHTML = '<div class="no-data">目前沒有符合條件的證券資料，請確認檔案格式或表頭名稱。</div>';
+                container.innerHTML = '<div class="no-data">目前沒有符合此條件的證券資料。</div>';
                 container.classList.remove('stock-grid'); 
                 return;
             }
+
+            document.getElementById('actionBar').style.display = 'flex';
 
             stocks.forEach(stock => {
                 const btn = document.createElement('button');
@@ -172,7 +216,26 @@
             });
         }
 
-        // 5. 執行畫面渲染
+        // 下載 Excel 函式
+        function downloadExcel() {
+            if (filteredStocks.length === 0) return;
+            
+            // 設定第一列為標題：代號, 名稱
+            const wsData = [ ["代號", "名稱"] ];
+            
+            // 第二列開始塞入資料
+            filteredStocks.forEach(stock => {
+                wsData.push([stock.code, stock.name]);
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "符合名單");
+            
+            // 匯出為 .xls 檔
+            XLSX.writeFile(wb, `${cleanTitle}.xls`);
+        }
+
         renderStockButtons(filteredStocks);
     </script>
 

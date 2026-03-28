@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>個股明細</title>
     <style>
-        /* 樣式保持不變，維持灰色系優雅閱讀體驗 */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             color: #555555; 
@@ -24,7 +23,7 @@
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
             width: 100%;
             max-width: 900px;
-            overflow-x: auto; /* 若表格太寬可左右滑動 */
+            overflow-x: auto; 
         }
 
         #pageTitle {
@@ -45,28 +44,10 @@
             white-space: nowrap;
         }
 
-        th, td {
-            border: 1px solid #dddddd;
-            padding: 12px 8px;
-        }
-
-        th {
-            background-color: #f8f9fa;
-            color: #444444;
-            font-weight: 600;
-        }
-
-        .divider-row td {
-            background-color: #eeeeee;
-            height: 4px;
-            padding: 0;
-            border: none;
-        }
-
-        .summary-row {
-            background-color: #fdfdfd;
-            font-weight: bold;
-        }
+        th, td { border: 1px solid #dddddd; padding: 12px 8px; }
+        th { background-color: #f8f9fa; color: #444444; font-weight: 600; }
+        .divider-row td { background-color: #eeeeee; height: 4px; padding: 0; border: none; }
+        .summary-row { background-color: #fdfdfd; font-weight: bold; }
 
         .dot {
             display: inline-block;
@@ -77,18 +58,13 @@
         }
         .dot-red { background-color: #d9534f; }
         .dot-green { background-color: #5cb85c; }
-        .dot-yellow { background-color: #f0ad4e; }
-        .dot-brown { background-color: #8b4513; }
-
         .text-red { color: #d9534f; font-weight: bold; }
         .text-black { color: #222222; font-weight: bold; }
-        
-        .error-msg {
-            color: #d9534f;
-            text-align: center;
-            font-weight: bold;
-            padding: 20px;
-        }
+        .error-msg { color: #d9534f; text-align: center; font-weight: bold; padding: 20px; }
+
+        /* 新增：共振與無共振的文字樣式區分 */
+        .text-resonance { color: #444444; font-weight: bold; }
+        .text-no-resonance { color: #aaaaaa; } /* 淺灰色 */
     </style>
 </head>
 <body>
@@ -117,8 +93,6 @@
             <thead>
                 <tr>
                     <th>日期</th>
-                    <th>K 棒大小</th>
-                    <th>成交量增/減</th>
                     <th>是否共振</th>
                     <th>K 棒性質</th>
                     <th>漲/跌</th>
@@ -130,36 +104,30 @@
     </div>
 
     <script>
-        // 1. 抓取網址中的股號與股名
         const urlParams = new URLSearchParams(window.location.search);
         const stockFullName = urlParams.get('stock') || '未知證券';
-        const stockCode = stockFullName.split(' ')[0]; // 取出股號用來比對資料
+        const stockCode = stockFullName.split(' ')[0]; 
         
         document.title = stockFullName;
         document.getElementById('pageTitle').textContent = stockFullName;
 
-        // 輔助函式：用來將含有逗號的數字字串 (例如 "1,000") 轉為純數字
         function parseNum(val) {
             if (typeof val === 'number') return val;
             if (!val) return 0;
             return parseFloat(String(val).replace(/,/g, ''));
         }
 
-        // 2. 從 sessionStorage 取得真實資料
         const dailyDataStr = sessionStorage.getItem('dailyData');
-        const weeklyDataStr = sessionStorage.getItem('weeklyData');
 
         if (!dailyDataStr) {
             document.querySelector('.container').innerHTML = '<div class="error-msg">找不到資料，請回到首頁重新上傳檔案。</div>';
         } else {
             const allDailyData = JSON.parse(dailyDataStr);
             
-            // 篩選出這檔股票的所有交易日資料
             let displayData = allDailyData.filter(row => {
                 const rowCode = String(row['證券代號'] || row['代號'] || row['Code'] || '').trim();
                 return rowCode === stockCode;
             }).map(row => {
-                // 正規化欄位名稱與數值
                 return {
                     date: row['日期'] || row['年月日'] || row['Date'] || '未知日期',
                     open: parseNum(row['開盤價'] || row['Open']),
@@ -173,31 +141,25 @@
             if (displayData.length === 0) {
                 document.querySelector('.container').innerHTML = '<div class="error-msg">找不到該檔股票的詳細資料，請確認資料格式。</div>';
             } else {
-                // 設定起訖日期
                 document.getElementById('dateRangeTitle').textContent = 
                     `起訖日期：${displayData[0].date} — ${displayData[displayData.length-1].date}`;
 
                 const dataTbody = document.querySelector('#dataTable tbody');
                 const analysisTbody = document.querySelector('#analysisTable tbody');
 
-                let weekHigh = -Infinity;
-                let weekLow = Infinity;
-                let weekVolume = 0;
+                let weekHigh = -Infinity, weekLow = Infinity, weekVolume = 0;
                 const weekOpen = displayData[0].open;
                 const weekClose = displayData[displayData.length-1].close;
 
-                // 3. 核心運算迴圈
                 for (let i = 0; i < displayData.length; i++) {
                     const current = displayData[i];
-                    const previous = i > 0 ? displayData[i - 1] : null; // 第一天沒有「昨天」的資料
-                    const next = i < displayData.length - 1 ? displayData[i + 1] : null; // 最後一天沒有「明天」的資料
+                    const previous = i > 0 ? displayData[i - 1] : null; 
 
-                    // 計算一週總計數據
                     if (current.high > weekHigh) weekHigh = current.high;
                     if (current.low < weekLow) weekLow = current.low;
                     weekVolume += current.volume;
 
-                    // 繪製表格一 (基礎數據)
+                    // 表格一：基礎資料
                     const dataRow = `
                         <tr>
                             <td>${current.date}</td>
@@ -210,77 +172,46 @@
                     `;
                     dataTbody.insertAdjacentHTML('beforeend', dataRow);
 
-                    // --- 運算表格二的指標 ---
-                    
-                    // 指標 1：K 棒大小 (P1 = |收盤-開盤|, P2 = 最高-最低)
-                    const p1 = Math.abs(current.close - current.open);
-                    const p2 = current.high - current.low;
-                    let kBarSizeHtml = '';
-                    let kBarSymbol = ''; 
-                    if (p1 > p2) {
-                        kBarSizeHtml = '<span class="dot dot-yellow"></span>';
-                        kBarSymbol = 'yellow';
-                    } else if (p1 < p2) {
-                        kBarSizeHtml = '<span class="dot dot-brown"></span>';
-                        kBarSymbol = 'brown';
-                    } else {
-                        kBarSizeHtml = '–';
-                    }
-
-                    // 指標 2：成交量增/減 (H = 今天成交量 - 昨天成交量)
-                    let volChangeHtml = '–';
-                    let volSymbol = '';
-                    if (previous) {
-                        const h = current.volume - previous.volume;
-                        if (h > 0) {
-                            volChangeHtml = '<span class="dot dot-yellow"></span>';
-                            volSymbol = 'yellow';
-                        } else if (h < 0) {
-                            volChangeHtml = '<span class="dot dot-brown"></span>';
-                            volSymbol = 'brown';
-                        }
-                    }
-
-                    // 指標 3：是否共振
+                    // --- 表格二：運算 ---
                     let resonanceHtml = '–';
-                    if (kBarSymbol === volSymbol && kBarSymbol !== '') {
-                        resonanceHtml = `<span class="dot dot-${kBarSymbol}"></span>`;
-                    }
-
-                    // 指標 4：K 棒性質
                     let kBarNatureHtml = '–';
-                    if (next) { 
-                        // 條件一：上漲的紅 K
-                        if ((current.close - current.open > 0) && 
-                            (next.close - next.open > 0) && 
-                            (next.close - current.close > 0)) {
-                            kBarNatureHtml = '<span class="text-red">上漲的紅 K</span>';
+                    let upDownHtml = '–';
+
+                    if (previous) {
+                        // 1. 漲/跌 (K = 當日收盤價 - 前一日收盤價)
+                        const k = current.close - previous.close;
+                        if (k > 0) upDownHtml = '<span class="dot dot-red"></span>';
+                        else if (k < 0) upDownHtml = '<span class="dot dot-green"></span>';
+
+                        // 2. 共振判斷
+                        const p1 = Math.abs(current.close - current.open);
+                        const p2 = (current.high - current.low) / 2;
+                        const p = p1 - p2;
+                        const h = current.volume - previous.volume;
+
+                        if ((p > 0 && h > 0) || (p < 0 && h < 0)) {
+                            // 套用新的樣式
+                            resonanceHtml = '<span class="text-resonance">共振</span>';
+                        } else if (p != 0 || h != 0) {
+                            // 套用淺灰色樣式
+                            resonanceHtml = '<span class="text-no-resonance">無共振</span>';
                         }
-                        // 條件二：下跌的黑 K
-                        else if ((current.close - current.open < 0) && 
-                                 (next.close - next.open < 0) && 
-                                 (next.close - current.close < 0)) {
-                            kBarNatureHtml = '<span class="text-black">下跌的黑 K</span>';
-                        }
+
+                        // 3. K 棒性質判斷
+                        const cond1 = (previous.close - previous.open > 0) && (current.close - current.open > 0) && (current.close - previous.close > 0);
+                        const cond2 = (previous.close - previous.open < 0) && (current.close - current.open < 0) && (current.close - previous.close < 0);
+                        const cond3 = (current.close - current.open < 0) && (current.close - previous.close > 0);
+                        const cond4 = (current.close - current.open > 0) && (current.close - previous.close < 0);
+
+                        if (cond1) kBarNatureHtml = '<span class="text-red">上漲的紅 K</span>';
+                        else if (cond2) kBarNatureHtml = '<span class="text-black">下跌的黑 K</span>';
+                        else if (cond3) kBarNatureHtml = '<span class="text-black">上漲的黑 K</span>';
+                        else if (cond4) kBarNatureHtml = '<span class="text-red">下跌的紅 K</span>';
                     }
 
-                    // 指標 5：漲/跌 (說明書定義：K = 收盤 - 開盤)
-                    const k = current.close - current.open;
-                    let upDownHtml = '';
-                    if (k > 0) {
-                        upDownHtml = '<span class="dot dot-red"></span>';
-                    } else if (k < 0) {
-                        upDownHtml = '<span class="dot dot-green"></span>';
-                    } else {
-                        upDownHtml = '–';
-                    }
-
-                    // 繪製表格二 (分析結果)
                     const analysisRow = `
                         <tr>
                             <td>${current.date}</td>
-                            <td>${kBarSizeHtml}</td>
-                            <td>${volChangeHtml}</td>
                             <td>${resonanceHtml}</td>
                             <td>${kBarNatureHtml}</td>
                             <td>${upDownHtml}</td>
@@ -289,51 +220,29 @@
                     analysisTbody.insertAdjacentHTML('beforeend', analysisRow);
                 }
 
-                // 4. 插入分隔線與一週總計列
-                // 嘗試從 weeklyData 取得一週數據，若無則使用每天加總的結果
-                let finalWeekOpen = weekOpen, finalWeekClose = weekClose;
-                let finalWeekHigh = weekHigh, finalWeekLow = weekLow, finalWeekVolume = weekVolume;
-
-                if (weeklyDataStr) {
-                    const allWeeklyData = JSON.parse(weeklyDataStr);
-                    const weekRow = allWeeklyData.find(row => String(row['證券代號'] || row['代號'] || row['Code'] || '').trim() === stockCode);
-                    if (weekRow) {
-                        finalWeekOpen = parseNum(weekRow['開盤價'] || weekRow['Open'] || weekOpen);
-                        finalWeekClose = parseNum(weekRow['收盤價'] || weekRow['Close'] || weekClose);
-                        finalWeekHigh = parseNum(weekRow['最高價'] || weekRow['High'] || weekHigh);
-                        finalWeekLow = parseNum(weekRow['最低價'] || weekRow['Low'] || weekLow);
-                        finalWeekVolume = parseNum(weekRow['成交股數'] || weekRow['成交量'] || weekRow['Volume'] || weekVolume);
-                    }
-                }
-
+                // 總計列
                 const dataSummaryHtml = `
                     <tr class="divider-row"><td colspan="6"></td></tr>
                     <tr class="summary-row">
                         <td>一週</td>
-                        <td>${finalWeekOpen}</td>
-                        <td>${finalWeekClose}</td>
-                        <td>${finalWeekHigh}</td>
-                        <td>${finalWeekLow}</td>
-                        <td>${finalWeekVolume}</td>
+                        <td>${weekOpen}</td>
+                        <td>${weekClose}</td>
+                        <td>${weekHigh}</td>
+                        <td>${weekLow}</td>
+                        <td>${weekVolume}</td>
                     </tr>
                 `;
                 dataTbody.insertAdjacentHTML('beforeend', dataSummaryHtml);
 
-                const weekP1 = Math.abs(finalWeekClose - finalWeekOpen);
-                const weekP2 = finalWeekHigh - finalWeekLow;
-                const weekKBarSizeHtml = (weekP1 > weekP2) ? '<span class="dot dot-yellow"></span>' : '<span class="dot dot-brown"></span>';
-                
-                const weekK = finalWeekOpen - finalWeekClose;
+                const weekK = weekClose - weekOpen;
                 let weekUpDownHtml = '–';
                 if (weekK > 0) weekUpDownHtml = '<span class="dot dot-red"></span>';
                 else if (weekK < 0) weekUpDownHtml = '<span class="dot dot-green"></span>';
 
                 const analysisSummaryHtml = `
-                    <tr class="divider-row"><td colspan="6"></td></tr>
+                    <tr class="divider-row"><td colspan="4"></td></tr>
                     <tr class="summary-row">
                         <td>一週</td>
-                        <td>${weekKBarSizeHtml}</td>
-                        <td>–</td> 
                         <td>–</td>
                         <td>–</td>
                         <td>${weekUpDownHtml}</td>
